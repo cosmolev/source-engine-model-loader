@@ -6,7 +6,8 @@
   "scripts": {
     "start": "cd example && parcel serve ./*.html --dist-dir ../dist/ --no-cache --no-hmr",
     "build": "cd example && parcel build ./*.html --dist-dir ../dist/ --no-cache --no-content-hash --public-url ./",
-    "lint": "eslint ./{src,example}/**.js"
+    "lint": "eslint ./{src,example}/**.js",
+    "test": "node --test test/*.test.mjs"
   },
   "repository": {
     "type": "git",
@@ -28,5 +29,6 @@
     "parcel": "^2.0.0",
     "static-server": "^2.2.1",
     "three": "^0.148.0"
-  }
+  },
+  "type": "module"
 }

@@ -1,3 +1,4 @@
+import { getMaterialPath, materialCandidates, loadMaterial } from './materialPaths.js';
 import {
 	DefaultLoadingManager,
 	BufferAttribute,
@@ -17,9 +18,10 @@ import { toTrianglesDrawMode } from 'three/examples/jsm/utils/BufferGeometryUtil
 
 class SourceModelLoader {
 
-	constructor( manager ) {
+	constructor( manager, options = {} ) {
 
 		this.manager = ( manager !== undefined ) ? manager : DefaultLoadingManager;
+		this.options = options;
 
 	}
 
@@ -40,7 +42,7 @@ class SourceModelLoader {
 
 		}
 
-		function toGeometryIndex( vtxBuffer, model, mesh, stripGroup, strip ) {
+		function toGeometryIndex( vtxBuffer, model, mesh, stripGroup, strip, vertexCount ) {
 
 			const vtxDataView = new DataView( vtxBuffer );
 			const indexArray = new Uint16Array( strip.numIndices );
@@ -53,6 +55,11 @@ class SourceModelLoader {
 				const index4 = mesh.vertexoffset + index3;
 				const index5 = index4 + model.vertexindex / 48;
 
+				if ( ! Number.isInteger( index5 ) || index5 < 0 || index5 >= vertexCount || index5 > 65535 || index3 >= mesh.numvertices ) {
+
+					throw new Error( 'Invalid Source vertex index.' );
+
+				}
 				indexArray[ i ] = index5;
 
 			}
@@ -65,19 +72,19 @@ class SourceModelLoader {
 
 		const mdlpr = new Promise( ( resolve, reject ) => {
 
-			new MDLLoader( this.manager ).load( `${ url }.mdl`, resolve, undefined, reject );
+			new MDLLoader( this.manager, this.options.loadFile ).load( `${ url }.mdl`, resolve, undefined, reject );
 
 		} );
 
 		const vvdpr = new Promise( ( resolve, reject ) => {
 
-			new VVDLoader( this.manager ).load( `${ url }.vvd`, resolve, undefined, reject );
+			new VVDLoader( this.manager, this.options.loadFile ).load( `${ url }.vvd`, resolve, undefined, reject );
 
 		} );
 
 		const vtxpr = new Promise( ( resolve, reject ) => {
 
-			new VTXLoader( this.manager ).load( `${ url }.dx90.vtx`, resolve, undefined, reject );
+			new VTXLoader( this.manager, this.options.loadFile ).load( `${ url }.dx90.vtx`, resolve, undefined, reject );
 
 		} );
 
@@ -85,47 +92,33 @@ class SourceModelLoader {
 			.all( [ mdlpr, vvdpr, vtxpr ] )
 			.then( ( [ mdl, vvd, vtx ] ) => {
 
-				const promises = [];
-				const vmtLoader = new VMTLoader( this.manager );
-				const tokens = url.split( '/models/' );
-				tokens.pop();
-				const path = tokens.join( '/models/' ) + '/materials/';
-				mdl.textures.forEach( t => {
+				const materialIssues = [];
+				const vmtLoader = new VMTLoader( this.manager, this.options.loadFile );
+				const path = this.options.materialPath || getMaterialPath( url );
+				vmtLoader.materialPath = path.endsWith( '/' ) ? path : `${ path }/`;
+				vmtLoader.loadTexture = this.options.loadTexture;
+				const promises = mdl.textures.map( async name => {
 
-					const matPromises = [];
-					mdl.textureDirectories.forEach( f => {
+					const candidates = materialCandidates( vmtLoader.materialPath, mdl.textureDirectories, name );
+					const material = await loadMaterial( vmtLoader, candidates );
+					if ( material ) {
 
-						const vmtUrl = `${ path }${ f }${ t }.vmt`;
-						const pr = new Promise( resolve => {
+						material.name = name;
+						return material;
 
-							vmtLoader.load( vmtUrl, material => {
-
-								material.name = t;
-								resolve( material );
-
-							}, undefined, () => resolve( null ) );
-
-						} );
-						matPromises.push( pr );
-
-					} );
-
-					promises.push( Promise.all( matPromises ).then( materials => materials.filter( m => ! ! m )[ 0 ] || new MeshPhongMaterial() ) );
+					}
+					materialIssues.push( { name, candidates } );
+					return new MeshPhongMaterial();
 
 				} );
-
-				// TODO: Order is important here so it would be best to guarantee the order
-				// in which the materials are specified
-				return Promise
-					.all( promises )
-					.then( materials => ( { materials, mdl, vvd, vtx } ) );
+				return Promise.all( promises ).then( materials => ( { materials, materialIssues, mdl, vvd, vtx } ) );
 
 			} )
-			.then( ( { mdl, vvd, vtx, materials } ) => {
+			.then( ( { mdl, vvd, vtx, materials, materialIssues } ) => {
 
 				if ( mdl.header.checksum !== vvd.header.checksum || mdl.header.checksum !== vtx.header.checksum ) {
 
-					console.warn( 'SourceModelLoader: File checksums do not match.' );
+					throw new Error( 'Source bundle checksums do not match.' );
 
 				}
 
@@ -138,6 +131,19 @@ class SourceModelLoader {
 
 				materials.map( m => m.skinning = true );
 				const group = new Group();
+				mdl.bones.forEach( ( bone, i ) => {
+
+					let parent = bone.parent;
+					const visited = new Set( [ i ] );
+					while ( parent !== - 1 ) {
+
+						if ( parent < 0 || parent >= mdl.bones.length || visited.has( parent ) ) throw new Error( 'Invalid Source bone hierarchy.' );
+						visited.add( parent );
+						parent = mdl.bones[ parent ].parent;
+
+					}
+
+				} );
 				const bones = mdl.bones.map( b => {
 
 					const bone = new Bone();
@@ -209,7 +215,7 @@ class SourceModelLoader {
 										// if ( s.indexOffset !== 0 || s.numIndices === 0 ) return;
 										// console.log( vtxStrip.flags, vtxStrip );
 
-										const indexAttr = toGeometryIndex( vtx.buffer, mdlModel, mdlMesh, vtxStripGroup, vtxStrip );
+										const indexAttr = toGeometryIndex( vtx.buffer, mdlModel, mdlMesh, vtxStripGroup, vtxStrip, vvd.attributes.position.count );
 										const geometry = new BufferGeometry();
 										geometry.setIndex( indexAttr );
 										geometry.setAttribute( 'position', vvd.attributes.position );
@@ -259,7 +265,11 @@ class SourceModelLoader {
 
 				group.userData.skinsTable = mdl.skinsTable;
 				group.userData.materials = materials;
-				onLoad( { group, vvd, mdl, vtx, materials } );
+				onLoad( { group, vvd, mdl, vtx, materials, materialIssues } );
+
+			} ).catch( error => {
+
+				if ( onError ) onError( error );
 
 			} );
 

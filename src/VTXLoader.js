@@ -1,3 +1,4 @@
+import { loadResource } from './loadResource.js';
 import {
 	DefaultLoadingManager,
 	FileLoader
@@ -5,9 +6,10 @@ import {
 
 // VTX: https://developer.valvesoftware.com/wiki/VTX
 
-const VTXLoader = function ( manager ) {
+const VTXLoader = function ( manager, loadFile ) {
 
 	this.manager = ( manager !== undefined ) ? manager : DefaultLoadingManager;
+	this.loadFile = loadFile;
 
 };
 
@@ -19,23 +21,19 @@ VTXLoader.prototype = {
 
 		const scope = this;
 
-		const loader = new FileLoader( this.manager );
-		loader.setPath( this.path );
-		loader.setResponseType( 'arraybuffer' );
-		loader.load( url, function ( text ) {
-
-			onLoad( scope.parse( text ) );
-
-		}, onProgress, onError );
+		return loadResource( this, url, 'VTX', text => onLoad( scope.parse( text ) ), onProgress, onError );
 
 	},
 
 	parse: function ( buffer ) {
 
+		let parseWork = 0;
+
 		function readString( dataView, offset, count = Infinity ) {
 
 			let str = '';
 			for ( let j = 0; j < count; j ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const c = dataView.getUint8( j + offset );
 				if ( c === 0 ) break;
@@ -117,6 +115,7 @@ VTXLoader.prototype = {
 			const res = [];
 
 			for ( let i = 0; i < numStrips; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				// TODO: This offset seems to make things work correctly for the ball and chain
 				// but it's unclear why... padding?
@@ -152,6 +151,7 @@ VTXLoader.prototype = {
 			const dataView = new DataView( buffer );
 			const res = [];
 			for ( let i = 0; i < numStripGroups; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				// TODO: Looking at the padding offsets in the MGSBox model it looks like
 				// this struct has as stride of 33 but counting up yields 25?
@@ -188,6 +188,7 @@ VTXLoader.prototype = {
 			const dataView = new DataView( buffer );
 			const res = [];
 			for ( let i = 0; i < numMeshes; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = meshOffset + i * 9;
 				const mesh = {};
@@ -209,6 +210,7 @@ VTXLoader.prototype = {
 			const dataView = new DataView( buffer );
 			const res = [];
 			for ( let i = 0; i < numLODs; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = lodOffset + i * 12;
 				const lod = {};
@@ -231,6 +233,7 @@ VTXLoader.prototype = {
 			const dataView = new DataView( buffer );
 			const res = [];
 			for ( let i = 0; i < numModels; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = modelOffset + i * 8;
 				const model = {};
@@ -252,6 +255,7 @@ VTXLoader.prototype = {
 			const dataView = new DataView( buffer );
 			const res = [];
 			for ( let i = 0; i < numBodyParts; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = bodyPartOffset + i * 8;
 				const bodyPart = {};
@@ -272,6 +276,7 @@ VTXLoader.prototype = {
 			const dataView = new DataView( buffer );
 			const res = [];
 			for ( let i = 0; i < matReplacementNum; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = matReplacementOffset + i * 8;
 				const replaceMaterial = {};
@@ -280,6 +285,7 @@ VTXLoader.prototype = {
 				replaceMaterial.replacements = [];
 
 				for ( let j = 0; j < replaceMaterial.numReplacements; j ++ ) {
+					if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 					const offset2 = replaceMaterial.replacementOffset + i * 6;
 					const replacement = {};

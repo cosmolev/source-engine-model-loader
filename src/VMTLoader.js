@@ -1,6 +1,7 @@
+import { getMaterialPath } from './materialPaths.js';
+import { loadResource } from './loadResource.js';
 import {
 	DefaultLoadingManager,
-	FileLoader,
 	MeshPhongMaterial,
 	RepeatWrapping,
 	LinearEncoding,
@@ -17,9 +18,10 @@ function addExt( path, ext ) {
 
 }
 
-const VMTLoader = function ( manager ) {
+const VMTLoader = function ( manager, loadFile ) {
 
 	this.manager = ( manager !== undefined ) ? manager : DefaultLoadingManager;
+	this.loadFile = loadFile;
 
 };
 
@@ -31,25 +33,21 @@ VMTLoader.prototype = {
 
 		const scope = this;
 
-		const loader = new FileLoader( this.manager );
-		loader.setPath( this.path );
-		loader.setResponseType( 'text' );
-		loader.load( url, function ( text ) {
-
-			onLoad( scope.parse( text, url ) );
-
-		}, onProgress, onError );
+		return loadResource( this, url, 'VMT', text => onLoad( scope.parse( text, url ) ), onProgress, onError );
 
 	},
 
 	// TODO: Fix this url use and follow the "path" pattern of other loaders
 	parse: function ( string, url ) {
 
+		let parseWork = 0;
+
 		let type = '';
 		let root = null;
 		const objects = [];
 		let currData = '';
 		for ( let i = 0, l = string.length; i < l; i ++ ) {
+			if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 			const c = string[ i ];
 			if ( c === '{' ) {
@@ -124,13 +122,11 @@ VMTLoader.prototype = {
 		}
 
 		// TODO: Repeat wrapping should be handled in the VFT loads
-		const urlTokens = url.split( /materials/i );
-		urlTokens.pop();
-
-		const path = `${ urlTokens.join( 'materials' ) }materials/`;
+		const path = this.materialPath || getMaterialPath( url, 'materials' );
 		const material = new MeshPhongMaterial();
-		const vtfLoader = new VTFLoader( this.manager );
+		const vtfLoader = this.loadTexture ? { load: this.loadTexture } : new VTFLoader( this.manager );
 		for ( const key in root ) {
+			if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 			// TODO: Use more keys
 			// TODO: bump map is causing all normals to disappear here

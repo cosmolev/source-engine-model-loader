@@ -1,6 +1,6 @@
+import { loadResource } from './loadResource.js';
 import {
 	DefaultLoadingManager,
-	FileLoader,
 	InterleavedBuffer,
 	BufferAttribute,
 	InterleavedBufferAttribute
@@ -19,9 +19,10 @@ function memcopy( dst, dstStart, src, srcStart, len ) {
 
 }
 
-const VVDLoader = function ( manager ) {
+const VVDLoader = function ( manager, loadFile ) {
 
 	this.manager = ( manager !== undefined ) ? manager : DefaultLoadingManager;
+	this.loadFile = loadFile;
 
 };
 
@@ -33,18 +34,13 @@ VVDLoader.prototype = {
 
 		const scope = this;
 
-		const loader = new FileLoader( this.manager );
-		loader.setPath( this.path );
-		loader.setResponseType( 'arraybuffer' );
-		loader.load( url, function ( text ) {
-
-			onLoad( scope.parse( text ) );
-
-		}, onProgress, onError );
+		return loadResource( this, url, 'VVD', text => onLoad( scope.parse( text ) ), onProgress, onError );
 
 	},
 
 	parse: function ( buffer ) {
+
+		let parseWork = 0;
 
 		// https://github.com/ValveSoftware/source-sdk-2013/blob/0d8dceea4310fde5706b3ce1c70609d72a38efdf/sp/src/public/studio.h#L398
 		const MAX_NUM_LODS = 8;
@@ -75,6 +71,7 @@ VVDLoader.prototype = {
 			// int
 			const numLODVertexes = [];
 			for ( let j = 0; j < MAX_NUM_LODS; j ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				numLODVertexes.push( dataView.getInt32( i, true ) );
 				i += 4;
@@ -118,6 +115,7 @@ VVDLoader.prototype = {
 			let offset = fixupTableStart;
 			const res = [];
 			for ( let i = 0; i < numFixups; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const fixup = {};
 				fixup.lod = dataView.getInt32( offset + 0, true );
@@ -146,6 +144,7 @@ VVDLoader.prototype = {
 			const skinIndexArray = new Uint8Array( totalVerts * 4 );
 
 			for ( let i = 0; i < totalVerts; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const i4 = i * 4;
 				const floatIndex = i * 12;
@@ -190,6 +189,7 @@ VVDLoader.prototype = {
 			const ogUint8Buffer = new Uint8Array( buffer );
 			let target = 0;
 			for ( let i = 0; i < fixups.length; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const fixup = fixups[ i ];
 				memcopy(

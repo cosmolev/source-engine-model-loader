@@ -53,3 +53,22 @@ Loads the set of Source Engine model files at the given path. It is expected tha
 # Unimplemented Features
 
 See [issue #4](https://github.com/gkjohnson/source-engine-model-loader/issues/4) for full list of unimplemented features.
+
+## Companion resolution fork
+
+This fork supports loose uploads as well as Source game folder trees. A model outside
+`models/` looks for `materials/` beside itself. `SourceModelLoader(manager, options)`
+accepts an explicit `materialPath` (also used for VTF references), an optional
+`loadFile(url, kind, onLoad, onProgress, onError)` transport, and an optional
+`loadTexture(url, onLoad, onProgress, onError)` transport returning a Three.js texture.
+The default transports remain Three.js loaders. Embedders can use these hooks for
+bounded requests, validation, cancellation and texture capability checks.
+
+Material search directories are tried in order. Geometry still loads if no material
+is available; the result includes `materialIssues`, each with a material `name` and
+its unresolved `candidates`. A failed search candidate alone is not a missing material.
+Texture failures continue to use the loading manager's error callback. Required-file
+transport/parser failures reach `onError`. Parser work, vertex indices, checksums and
+bone ancestry retain the guards previously applied by the decompiler build.
+
+Run `npm test` for generated-fixture regression tests (Node.js 18+).

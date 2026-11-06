@@ -1,6 +1,6 @@
+import { loadResource } from './loadResource.js';
 import {
 	DefaultLoadingManager,
-	FileLoader,
 	Vector3,
 	Quaternion,
 	Euler,
@@ -10,9 +10,10 @@ import {
 // MDL: https://developer.valvesoftware.com/wiki/MDL
 // https://github.com/ValveSoftware/source-sdk-2013/blob/master/sp/src/public/studio.h
 
-const MDLLoader = function ( manager ) {
+const MDLLoader = function ( manager, loadFile ) {
 
 	this.manager = ( manager !== undefined ) ? manager : DefaultLoadingManager;
+	this.loadFile = loadFile;
 
 };
 
@@ -24,23 +25,19 @@ MDLLoader.prototype = {
 
 		const scope = this;
 
-		const loader = new FileLoader( this.manager );
-		loader.setPath( this.path );
-		loader.setResponseType( 'arraybuffer' );
-		loader.load( url, function ( text ) {
-
-			onLoad( scope.parse( text ) );
-
-		}, onProgress, onError );
+		return loadResource( this, url, 'MDL', text => onLoad( scope.parse( text ) ), onProgress, onError );
 
 	},
 
 	parse: function ( buffer ) {
 
+		let parseWork = 0;
+
 		function readString( dataView, offset, count = Infinity ) {
 
 			let str = '';
 			for ( let j = 0; j < count; j ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const c = dataView.getUint8( j + offset );
 				if ( c === 0 ) break;
@@ -515,6 +512,7 @@ MDLLoader.prototype = {
 			const textures = [];
 			// struct mstudiotexture_t
 			for ( let i = 0; i < header.numtextures; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = header.textureindex + i * 16 * 4;
 				const sznameindex = dataView.getInt32( offset, true );
@@ -532,6 +530,7 @@ MDLLoader.prototype = {
 
 			const textureDirectories = [];
 			for ( let i = 0; i < header.numcdtextures; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = header.cdtextureindex + i * 4;
 				const ptr = dataView.getInt32( offset, true );
@@ -542,6 +541,7 @@ MDLLoader.prototype = {
 			const includeModels = [];
 			// struct mstudiomodelgroup_t
 			for ( let i = 0; i < header.numincludemodels; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = header.includemodelindex + i * 8;
 				const model = {};
@@ -554,6 +554,7 @@ MDLLoader.prototype = {
 			// struct mstudiobodyparts_t
 			const bodyParts = [];
 			for ( let i = 0; i < header.numbodyparts; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = header.bodypartindex + i * 16;
 				const bodyPart = {};
@@ -566,6 +567,7 @@ MDLLoader.prototype = {
 
 				// struct mstudiomodel_t
 				for ( let i2 = 0; i2 < bodyPart.nummodels; i2 ++ ) {
+					if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 					const offset2 = offset + bodyPart.modelindex + i2 * 148;
 					const model = {};
@@ -601,6 +603,7 @@ MDLLoader.prototype = {
 
 					// struct mstudiomesh_t
 					for ( let i3 = 0; i3 < model.nummeshes; i3 ++ ) {
+						if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 						const offset3 = offset2 + model.meshindex + i3 * 116;
 						const mesh = {};
@@ -647,6 +650,7 @@ MDLLoader.prototype = {
 			// mstudiobone_t
 			const bones = [];
 			for ( let i = 0; i < header.numbones; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = header.boneindex + i * 216;
 				const bone = {};
@@ -656,6 +660,7 @@ MDLLoader.prototype = {
 
 				const bonecontroller = new Array( 6 );
 				for ( let i = 0; i < 6; i ++ ) {
+					if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 					bonecontroller[ i ] = dataView.getInt32( offset + 8 + i * 4, true );
 
@@ -695,6 +700,7 @@ MDLLoader.prototype = {
 				const posToBone = new Matrix4();
 				posToBone.identity();
 				for ( let i = 0; i < 12; i ++ ) {
+					if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 					posToBone.elements[ i ] = dataView.getFloat32( offset + 96 + i * 4, true );
 
@@ -730,6 +736,7 @@ MDLLoader.prototype = {
 
 			const boneControllers = [];
 			for ( let i = 0; i < header.numbonecontrollers; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const boneController = {};
 				const offset = header.bonecontrollerindex + i * 56;
@@ -750,6 +757,7 @@ MDLLoader.prototype = {
 			const animDescriptions = [];
 			// struct mstudioanimdesc_t
 			for ( let i = 0; i < header.numlocalanim; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const animDesc = {};
 				const offset = header.localanimindex + i * 100;
@@ -766,6 +774,7 @@ MDLLoader.prototype = {
 				// struct mstudiomovement_t
 				animDesc.movements = [];
 				for ( let i2 = 0; i2 < animDesc.nummovements; i2 ++ ) {
+					if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 					const movement = {};
 					const offset2 = offset + animDesc.movementindex + i2 * 44;
@@ -830,6 +839,7 @@ MDLLoader.prototype = {
 			// struct mstudioseqdesc_t
 			const localSequences = [];
 			for ( let i = 0; i < header.numlocalseq; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const localSeq = {};
 				const offset = header.localseqindex + i * 212;
@@ -934,6 +944,7 @@ MDLLoader.prototype = {
 			// mstudioikchain_t
 			const ikchains = [];
 			for ( let i = 0; i < header.numikchains; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = header.ikchainindex + i * 16;
 
@@ -945,6 +956,7 @@ MDLLoader.prototype = {
 				ikchain.links = [];
 
 				for ( let j = 0; j < ikchain.numlinks; j ++ ) {
+					if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 					const linkOffset = offset + ikchain.linkindex + j * 28;
 
@@ -964,10 +976,12 @@ MDLLoader.prototype = {
 
 			const skinsTable = [];
 			for ( let i = 0; i < header.numskinfamilies; i ++ ) {
+				if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 				const offset = header.skinindex + i * header.numskinref * 2;
 				const ref = [];
 				for ( let j = 0; j < header.numskinref; j ++ ) {
+					if ( ++ parseWork > 100000 ) throw new Error( 'Source parser work limit exceeded.' );
 
 					ref.push( dataView.getUint16( offset + j * 2, true ) );
 
